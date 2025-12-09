@@ -39,3 +39,20 @@
 
 # debug information files
 *.dwo
+
+# clangd cache
+/.cache/
+/.clangd/
+
+# build directories 
+/build*/
+
+# Visual Studio Code / Visual Studio
+/compile_commands.json
+.vscode/*
+/out/
+/.vs/
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
