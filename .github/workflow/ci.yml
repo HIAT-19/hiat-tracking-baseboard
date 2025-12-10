@@ -1,0 +1,47 @@
+name: C++ CI with CMake/CTest
+
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake gcc g++ gcovr
+
+    # 可选：配置缓存以加速后续运行
+    - name: Cache build directory
+      uses: actions/cache@v3
+      with:
+        path: build
+        key: ${{ runner.os }}-build-${{ hashFiles('CMakeLists.txt') }}
+
+    - name: Configure CMake (with coverage)
+      run: >
+        cmake -B build -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_CXX_FLAGS="-fprofile-arcs -ftest-coverage"
+        -DBUILD_TESTING=ON
+
+    - name: Build project and tests
+      run: cmake --build build --parallel 4
+
+    - name: Run CTest
+      run: |
+        cd build
+        ctest --output-on-failure --timeout 300
+
+    - name: Generate and upload coverage report
+      if: success()
+      run: |
+        gcovr build/ --exclude external/ --sonarqube sonarqube-coverage.xml
+        echo "覆盖率报告已生成"
+      # 可选：上传报告作为构件供下载
+    - uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: coverage-report
+        path: sonarqube-coverage.xml

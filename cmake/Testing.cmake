@@ -3,8 +3,6 @@
 #  2. 增加覆盖率测试 (暂时关闭)
 #  3. 增加内存泄漏检测 (暂时关闭)
 
-enable_testing()
-
 set(GOOGLETEST_DIR ${PROJECT_SOURCE_DIR}/third_party/googletest)
 
 if(NOT EXISTS ${GOOGLETEST_DIR})
@@ -16,6 +14,9 @@ option(INSTALL_GMOCK "Install GMock" OFF)
 option(INSTALL_GTEST "Install GTest" OFF)
 
 add_subdirectory(${GOOGLETEST_DIR} ${CMAKE_BINARY_DIR}/googletest)
+
+# Suppress uninitialized error
+target_compile_options(gtest PRIVATE -Wno-maybe-uninitialized)
 
 include(GoogleTest)
 # include(Coverage)
