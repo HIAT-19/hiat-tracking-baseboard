@@ -5,6 +5,7 @@
 
 #include <string>
 #include <string_view>
+#include <fmt/format.h>
 
 namespace sx
 {
@@ -29,24 +30,29 @@ void log_internal(const std::string& module_name,
                   int line,
                   const std::string& msg);
 
-// 格式化并记录
-void log_wrapper(const std::string& module_name,
-                 LogLevel level,
-                 const char* file,
-                 int line,
-                 const char* fmt, ...);
+// 模板格式化并记录（使用 fmt，提供编译期格式检查）
+template <typename... Args>
+inline void log_wrapper(const std::string& module_name,
+                        LogLevel level,
+                        const char* file,
+                        int line,
+                        fmt::format_string<Args...> fmt_str,
+                        Args&&... args) {
+    std::string msg = fmt::format(fmt_str, std::forward<Args>(args)...);
+    log_internal(module_name, level, file, line, msg);
+}
 
 }  // namespace sx
 
 #define SX_LOG_INFO(module, ...) \
-    sx::log_wrapper(module, LogLevel::INFO, __FILE__, __LINE__, __VA_ARGS__)
+    sx::log_wrapper(module, sx::LogLevel::INFO, __FILE__, __LINE__, __VA_ARGS__)
 #define SX_LOG_ERROR(module, ...) \
-    sx::log_wrapper(module, LogLevel::ERROR, __FILE__, __LINE__, __VA_ARGS__)
+    sx::log_wrapper(module, sx::LogLevel::ERROR, __FILE__, __LINE__, __VA_ARGS__)
 #define SX_LOG_DEBUG(module, ...) \
-    sx::log_wrapper(module, LogLevel::DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+    sx::log_wrapper(module, sx::LogLevel::DEBUG, __FILE__, __LINE__, __VA_ARGS__)
 #define SX_LOG_WARN(module, ...) \
-    sx::log_wrapper(module, LogLevel::WARN, __FILE__, __LINE__, __VA_ARGS__)
+    sx::log_wrapper(module, sx::LogLevel::WARN, __FILE__, __LINE__, __VA_ARGS__)
 #define SX_LOG_TRACE(module, ...) \
-    sx::log_wrapper(module, LogLevel::TRACE, __FILE__, __LINE__, __VA_ARGS__)
+    sx::log_wrapper(module, sx::LogLevel::TRACE, __FILE__, __LINE__, __VA_ARGS__)
 #define SX_LOG_CRITICAL(module, ...) \
-    sx::log_wrapper(module, LogLevel::CRITICAL, __FILE__, __LINE__, __VA_ARGS__)
+    sx::log_wrapper(module, sx::LogLevel::CRITICAL, __FILE__, __LINE__, __VA_ARGS__)

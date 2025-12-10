@@ -15,5 +15,8 @@ cmake .. && cmake --build .
 ## build and run test
 
 ```bash
+# In hiat-tracking-baseboard/build
 cmake -DBUILD_TESTING=ON .. && cmake --build .
+
+ctest
 ```

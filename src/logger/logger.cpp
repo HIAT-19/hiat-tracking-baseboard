@@ -7,7 +7,6 @@
 
 #include <mutex>
 #include <unordered_map>
-#include <cstdarg>
 
 namespace sx
 {
@@ -100,23 +99,6 @@ void log_internal(const std::string& module_name,
         logger_ptr->log(spdlog::source_loc{file, line, SPDLOG_FUNCTION}, to_spdlog_level(level),
                         msg);
     }
-}
-
-void log_wrapper(const std::string& module_name,
-                 LogLevel level,
-                 const char* file,
-                 int line,
-                 const char* fmt,
-                 ...) 
-{
-    // 使用 va_list 进行格式化
-    va_list args;
-    va_start(args, fmt);
-    char buffer[1024];
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-
-    log_internal(module_name, level, file, line, std::string(buffer));
 }
 
 }  // namespace sx
