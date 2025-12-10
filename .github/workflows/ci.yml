@@ -7,6 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive  # 关键修改：递归下载所有子模块
+        fetch-depth: 0         # 可选：获取完整历史记录，某些子模块可能需要
 
     - name: Install dependencies
       run: |
