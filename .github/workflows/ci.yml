@@ -1,6 +1,12 @@
 name: C++ CI with CMake/CTest and Coverage
 
-on: [push, pull_request]
+on: 
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
 
 jobs:
   build-and-test:
@@ -48,8 +54,7 @@ jobs:
         # 从 build 目录运行，使用正则表达式精确排除第三方库和构建目录本身
         gcovr . \
           --root=".." \
-          --exclude=".*/third_party/.*" \
-          --exclude=".*/build/.*" \
+          --filter="../../src/" \
           --sonarqube sonarqube-coverage.xml \
           --print-summary \
           --html-details coverage.html
