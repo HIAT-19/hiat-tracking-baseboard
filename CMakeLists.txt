@@ -11,6 +11,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 # Forbid in-source builds
 include(NoInSourceBuilds)
 
+# Using BUILD_TESTING control whether the CTest module invokes enable_testing().
+include(CTest)
+
 # Include testing configuration (googletest)
 include(Testing)
 
