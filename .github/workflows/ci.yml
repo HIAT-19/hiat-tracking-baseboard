@@ -1,4 +1,4 @@
-name: C++ CI with CMake/CTest
+name: C++ CI with CMake/CTest and Coverage
 
 on: [push, pull_request]
 
@@ -8,25 +8,29 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive  # 关键修改：递归下载所有子模块
-        fetch-depth: 0         # 可选：获取完整历史记录，某些子模块可能需要
+        submodules: recursive
+        fetch-depth: 0
 
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake gcc g++ gcovr
 
-    # 可选：配置缓存以加速后续运行
     - name: Cache build directory
       uses: actions/cache@v3
       with:
         path: build
         key: ${{ runner.os }}-build-${{ hashFiles('CMakeLists.txt') }}
+        # 排除 .gcda 和 .gcno 文件，避免覆盖率数据被缓存导致结果不准确
+        restore-keys: |
+          ${{ runner.os }}-build-
 
     - name: Configure CMake (with coverage)
       run: >
-        cmake -B build -DCMAKE_BUILD_TYPE=Debug
-        -DCMAKE_CXX_FLAGS="-fprofile-arcs -ftest-coverage"
+        cmake -B build
+        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_C_FLAGS="-fprofile-arcs -ftest-coverage --coverage"
+        -DCMAKE_CXX_FLAGS="-fprofile-arcs -ftest-coverage --coverage"
         -DBUILD_TESTING=ON
 
     - name: Build project and tests
@@ -40,11 +44,23 @@ jobs:
     - name: Generate and upload coverage report
       if: success()
       run: |
-        gcovr build/ --exclude external/ --sonarqube sonarqube-coverage.xml
-        echo "覆盖率报告已生成"
-      # 可选：上传报告作为构件供下载
+        cd build
+        # 从 build 目录运行，使用正则表达式精确排除第三方库和构建目录本身
+        gcovr . \
+          --root=".." \
+          --exclude=".*/third_party/.*" \
+          --exclude=".*/build/.*" \
+          --sonarqube sonarqube-coverage.xml \
+          --print-summary \
+          --html-details coverage.html
+        echo "覆盖率报告已生成 (SonarQube XML 和 HTML)"
+        # 查看摘要
+        gcovr . --root=".." --exclude=".*/third_party/.*" --exclude=".*/build/.*" --print-summary
+
     - uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: coverage-report
-        path: sonarqube-coverage.xml
+        name: coverage-reports
+        path: |
+          build/sonarqube-coverage.xml
+          build/coverage.html
