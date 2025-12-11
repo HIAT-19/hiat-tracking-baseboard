@@ -22,9 +22,9 @@ add_subdirectory(src)
 
 
 ### UTs ###
-add_executable(getimg_test ${CMAKE_CURRENT_LIST_DIR}/test/getimg_test.c)
-target_link_libraries(getimg_test 
-    PRIVATE
-        getimg
-)
+# add_executable(getimg_test ${CMAKE_CURRENT_LIST_DIR}/test/getimg_test.c)
+# target_link_libraries(getimg_test 
+#     PRIVATE
+#         getimg
+# )
 # AddTests(getimg_test)
