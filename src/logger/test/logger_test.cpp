@@ -6,7 +6,7 @@
 #define TEST_INFO(...)  SX_LOG_INFO("TEST", __VA_ARGS__)
 #define TEST_ERROR(...) SX_LOG_ERROR("TEST", __VA_ARGS__)
 
-TEST(LoggerTest, BasicLogging) { // NOLINT
+TEST(LoggerTest, BasicLogging) { 
     sx::LogManager::init("test_log.log");
     SX_LOG_INFO("TestModule", "This is an info log: {}", 42);
     SX_LOG_ERROR("TestModule", "This is an error log: {}", "error occurred");
@@ -15,7 +15,7 @@ TEST(LoggerTest, BasicLogging) { // NOLINT
     SX_LOG_TRACE("TestModule", "This is a trace log");
 }
 
-TEST(LoggerTest, ModuleLogging) { // NOLINT
+TEST(LoggerTest, ModuleLogging) { 
     sx::LogManager::init("test_log.log");
     TEST_INFO("Info log from TEST module: {}", 3.14);
     TEST_ERROR("Error log from TEST module: {}", "critical failure");
