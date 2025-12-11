@@ -1,0 +1,383 @@
+#include "img_xdma.h"
+#include "queue.h"
+static void* mmap_control(int fd, long mapsize)
+{
+    void* vir_addr;
+    vir_addr = mmap(0, mapsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    return vir_addr;
+}
+
+static int analysis_camera(Fpgacamera218 *fpgacamera, unsigned char* control_base, int cameralen)
+{
+    unsigned char *buff;
+
+    buff = (unsigned char*)(fpgacamera);
+    buff[0] = *(control_base + cameralen + 1);
+    buff[1] = *(control_base + cameralen + 0);
+    buff[2] = *(control_base + cameralen + 3);
+    buff[3] = *(control_base + cameralen + 2);
+    buff[4] = *(control_base + cameralen + 5);
+    buff[5] = *(control_base + cameralen + 4);
+    buff[6] = *(control_base + cameralen + 7);
+    buff[7] = *(control_base + cameralen + 6);
+    buff[8] = *(control_base + cameralen + 11);
+    buff[9] = *(control_base + cameralen + 10);
+    buff[10] = *(control_base + cameralen + 9);
+    buff[11] = *(control_base + cameralen + 8);
+    buff[12] = *(control_base + cameralen + 15);
+    buff[13] = *(control_base + cameralen + 14);
+    buff[14] = *(control_base + cameralen + 13);
+    buff[15] = *(control_base + cameralen + 12);
+    return 0;
+}
+/**
+ * 从FPGA DDR读取数据
+ * @param c2h_dma_fd DMA文件描述符
+ * @param fpga_ddr_addr FPGA DDR地址
+ * @param buffer 数据缓冲区
+ * @param size 数据大小
+ * @return 成功读取的字节数，-1表示失败
+ */
+static int get_data_from_fpga_ddr(int c2h_dma_fd, unsigned int fpga_ddr_addr, unsigned char* buffer, unsigned int size)
+{
+    int ret;
+    
+    /* 定位到FPGA DDR地址 */
+    if (lseek(c2h_dma_fd, fpga_ddr_addr, SEEK_SET) < 0) {
+		printf("get_data_from_fpga_ddr lseek err\n");
+        return -1;  /* lseek失败 */
+    }
+    
+    /* 读取数据 */
+    ret = read(c2h_dma_fd, buffer, size);
+    if (ret < 0) {
+		printf("get_data_from_fpga_ddr read err\n");
+        return -1;  /* read失败 */
+    }
+
+    return 0;  
+}
+
+
+static int xdmaRead218(void *ctx, unsigned char** img)
+{
+	ImgXdmaGetOpt *p = (ImgXdmaGetOpt *)(ctx);
+    ImgXdmaInitData218 *devdata = (ImgXdmaInitData218 *)(p->dev->devData);
+	int ret = 0;
+	int ct_k;
+	Task task;
+	char buff[11]= {0};
+	
+	ret = poll(devdata->fds, 1, 20);//等待20ms超时
+	if (ret <= 0){
+		printf("poll on\n");
+		return -1;
+	}
+		
+	if (devdata->fds[0].revents & POLLPRI)
+	{
+		ret = lseek(devdata->gpio_fd, 0, SEEK_SET);
+		if (ret == -1)
+			printf("xdmaRead lseek err\n");
+		ret = read(devdata->gpio_fd, buff, 10);
+		if (ret == -1)
+			printf("xdmaRead read err\n");
+
+		analysis_camera(&(devdata->fpgacamera), devdata->control_base, 0);
+		printf("camera_id = %d\n", devdata->fpgacamera.camera_id);
+		printf("buffer_index = %d\n", devdata->fpgacamera.buffer_index);
+		printf("in_speed = %d\n", devdata->fpgacamera.in_speed);
+		printf("out_speed = %d\n", devdata->fpgacamera.out_speed);
+		printf("buffer_count = %d\n", devdata->fpgacamera.buffer_count);
+		printf("ddr_error_count = %d\n", devdata->fpgacamera.ddr_error_count);
+
+		//放入队列
+		ct_k = queue_push(&(devdata->queue), task, 1);
+		if(ct_k < 0){
+			printf("xdma queue_push ct_k no\n");
+		}else{
+			get_data_from_fpga_ddr(devdata->c2h_dma_fd, devdata->c2h_fpga_ddr_addr[devdata->fpgacamera.buffer_index], devdata->queue.Tdata.buffer[ct_k], p->dev->width * p->dev->height * 2);	
+			task.free_buf_id = ct_k;
+			*img = devdata->queue.Tdata.buffer[ct_k];
+			queue_push(&(devdata->queue), task, 0);
+		}
+	}
+    
+	
+	return 0;
+}
+
+static int xdmaClean218(void *ctx)
+{
+    ImgXdmaGetOpt *devopt = (ImgXdmaGetOpt *)(ctx);
+    ImgXdmaInitData218 *pdevData = (ImgXdmaInitData218 *)(devopt->dev->devData);
+    // 清理资源（需要实现对应的清理函数）
+    if (devopt) {
+        if (devopt->dev) {
+             if (pdevData) {
+                // 关闭文件描述符
+                if (pdevData->c2h_dma_fd >= 0) close(pdevData->c2h_dma_fd);
+                if (pdevData->control_fd >= 0) close(pdevData->control_fd);
+                if (pdevData->events0_fd >= 0) close(pdevData->events0_fd);
+                if (pdevData->gpio_fd >= 0) close(pdevData->gpio_fd);
+                
+                // 释放内存
+                if (pdevData->c2h_fpga_ddr_addr) free(pdevData->c2h_fpga_ddr_addr);
+                
+                // 释放图像缓冲区
+                if (pdevData->img) {
+                    for (int i = 0; i < i; i++) {
+                        if (pdevData->img[i]) free(pdevData->img[i]);
+                    }
+                    free(pdevData->img);
+                }
+                free(pdevData);
+            }
+            free(devopt->dev);
+        }
+        free(devopt);
+    }
+	return 0;
+}
+
+static int xdmaPut218(void *ctx)
+{
+	ImgXdmaGetOpt *p = (ImgXdmaGetOpt *)(ctx);
+    ImgXdmaInitData218 *devdata = (ImgXdmaInitData218 *)(p->dev->devData);
+    Task task;
+
+    if(queue_kong(&(devdata->queue)) != 0 ){
+        task = queue_pop(&(devdata->queue), 1);
+	    task = queue_pop(&(devdata->queue), 0);
+    }
+	
+	return 0;
+}
+
+int xdmaInit218(ImgXdmaGetOpt *devopt)
+{
+    int ret;
+    int i;
+    char cmdstr[100] = {0};
+    ImgXdmaInitData218* pdevData = (ImgXdmaInitData218*)malloc(sizeof(ImgXdmaInitData218));
+    if (!pdevData) {
+        goto cleanup;
+    }
+    // 打开XDMA设备文件
+    pdevData->c2h_dma_fd = open("/dev/xdma0_c2h_0", O_RDWR | O_NONBLOCK);
+    if (pdevData->c2h_dma_fd < 0) {
+        printf("Error: Failed to open /dev/xdma0_c2h_0\n");
+        goto cleanup;
+    }
+
+    pdevData->control_fd = open("/dev/xdma0_user", O_RDWR | O_SYNC);
+    if (pdevData->control_fd < 0) {
+        printf("Error: Failed to open /dev/xdma0_user\n");
+        goto cleanup;
+    }
+
+    pdevData->events0_fd = open("/dev/xdma0_events_0", O_RDWR | O_SYNC);
+    if (pdevData->events0_fd == -1) {
+        printf("Error: Failed to open /dev/xdma0_events_0\n");
+        goto cleanup;
+    }
+    // 映射控制寄存器
+    pdevData->control_base = (unsigned char*)mmap_control(pdevData->control_fd, MAP_SIZE);
+    if (!pdevData->control_base) {
+        printf("Error: Failed to mmap control registers\n");
+        goto cleanup;
+    }
+    // 调整控制寄存器基址（设备0有偏移）
+    if (devopt->dev->id == 0) {
+        pdevData->control_base += 16;
+    }
+    // GPIO配置
+    memset(cmdstr,'\0',100);
+    sprintf(cmdstr,"echo %d > /sys/class/gpio/export",devopt->dev->gpio);
+    ret = system(cmdstr);
+    if(ret != 0){
+        printf("Error: GPIO export failed (gpio=%d, ret=%d)\n", devopt->dev->gpio, ret);
+    }
+
+    memset(cmdstr,'\0',100);
+    sprintf(cmdstr,"echo in > /sys/class/gpio/gpio%d/direction",devopt->dev->gpio);
+    ret = system(cmdstr);
+    if(ret != 0){
+        printf("Error: GPIO direction set failed (gpio=%d, ret=%d)\n", devopt->dev->gpio, ret);
+    }
+
+    memset(cmdstr,'\0',100);
+    sprintf(cmdstr,"echo rising > /sys/class/gpio/gpio%d/edge",devopt->dev->gpio);
+    ret = system(cmdstr);
+    if(ret != 0){
+        printf("Error: GPIO edge set failed (gpio=%d, ret=%d)\n", devopt->dev->gpio, ret);
+    }
+
+    memset(cmdstr,'\0',100);
+    sprintf(cmdstr,"/sys/class/gpio/gpio%d/value",devopt->dev->gpio);
+    pdevData->gpio_fd = open(cmdstr, O_RDONLY);
+    if (pdevData->gpio_fd == -1) {
+        printf("Error: Failed to open GPIO %d\n", devopt->dev->gpio);
+        goto cleanup;
+    }
+
+    // 设置pollfd
+    pdevData->fds[0].fd = pdevData->gpio_fd;
+    pdevData->fds[0].events = POLLPRI;
+
+    // 分配FPGA DDR地址数组
+    pdevData->c2h_fpga_ddr_addr = (unsigned int*)malloc(devopt->dev->bufnum * sizeof(unsigned int));
+    if (!pdevData->c2h_fpga_ddr_addr) {
+        printf("Error: Failed to allocate FPGA DDR address array\n");
+        goto cleanup;
+    }
+
+    // 设置FPGA DDR地址
+    for (i = 0; i < devopt->dev->bufnum; i++) {
+        if (devopt->dev->id == 0) {
+            pdevData->c2h_fpga_ddr_addr[i] = DEV_DDR_BASE_ADDR + 0x40000000 + i * 0x01000000;
+        } else {
+            pdevData->c2h_fpga_ddr_addr[i] = DEV_DDR_BASE_ADDR + i * 0x01000000;
+        }
+    }
+
+    // 初始化队列
+    if (queue_init(&(pdevData->queue), devopt->dev->bufnum) != 0) {
+        printf("Error: Failed to initialize queue\n");
+        goto cleanup;
+    }
+
+    // 分配图像缓冲区
+    pdevData->img = (unsigned char**)malloc(devopt->dev->bufnum * sizeof(char*));
+    if (!pdevData->img) {
+        printf("Error: Failed to allocate image buffer array\n");
+        goto cleanup;
+    }
+
+    for (i = 0; i < devopt->dev->bufnum; i++) {
+        pdevData->img[i] = (unsigned char*)malloc(devopt->dev->width * devopt->dev->height * 2);
+        if (!pdevData->img[i]) {
+            printf("Error: Failed to allocate image buffer %d\n", i);
+            goto cleanup;
+        }
+        memset(pdevData->img[i], 0, devopt->dev->width * devopt->dev->height * 2);
+        pdevData->queue.Tdata.buffer[i] = pdevData->img[i];
+    }
+    // 设置操作函数
+    devopt->put_frame = xdmaPut218;
+    devopt->clean_frame = xdmaClean218;
+    devopt->read_frame = xdmaRead218;
+
+    devopt->dev->devData = pdevData;
+    return 0;
+    
+cleanup:
+    // 清理资源（需要实现对应的清理函数）
+
+    if (pdevData) {
+        // 关闭文件描述符
+        if (pdevData->c2h_dma_fd >= 0) close(pdevData->c2h_dma_fd);
+        if (pdevData->control_fd >= 0) close(pdevData->control_fd);
+        if (pdevData->events0_fd >= 0) close(pdevData->events0_fd);
+        if (pdevData->gpio_fd >= 0) close(pdevData->gpio_fd);
+        
+        // 释放内存
+        if (pdevData->c2h_fpga_ddr_addr) free(pdevData->c2h_fpga_ddr_addr);
+        
+        // 释放图像缓冲区
+        if (pdevData->img) {
+            for (int i = 0; i < i; i++) {
+                if (pdevData->img[i]) free(pdevData->img[i]);
+            }
+            free(pdevData->img);
+        }
+        free(pdevData);
+    }
+    return -5;
+}
+/**
+ * XDMA设备初始化
+ * @param ctx 设备上下文指针（输入输出参数）
+ * @return 成功返回0，失败返回负的错误码
+ */
+int ImgGetXdmaInit(void **ctx)
+{
+    int ret = 0;
+    int i = 0;
+    char cmdstr[100] = {0};
+    int devidlen = 0;
+    int devnamelen = 0;
+
+    // 参数检查
+    if (!ctx) {
+        printf("Error: Invalid context pointer\n");
+        return -1;
+    }
+
+    ImgGetXdmaInitData *p = (ImgGetXdmaInitData *)(*ctx);
+    if (!p) {
+        printf("Error: Invalid init data\n");
+        return -2;
+    }
+
+    // 分配设备操作结构体
+    ImgXdmaGetOpt *devopt = (ImgXdmaGetOpt*)malloc(sizeof(ImgXdmaGetOpt));
+    if (!devopt) {
+        printf("Error: Failed to allocate ImgXdmaGetOpt\n");
+        return -3;
+    }
+
+    // 计算字符串长度
+    devidlen = strlen(p->dev_id) + 1;
+    devnamelen = strlen(p->dev_name) + 1;
+
+    // 分配设备数据内存（修正内存分配大小）
+    devopt->dev = (ImgGetXdmaInitData*)malloc(sizeof(ImgGetXdmaInitData) + devidlen + devnamelen);
+    if (!devopt->dev) {
+        printf("Error: Failed to allocate device data\n");
+        free(devopt);
+        return -4;
+    }
+
+    // 初始化设备参数
+    devopt->dev->width = p->width;
+    devopt->dev->height = p->height;
+    devopt->dev->dev_id = (char *)(devopt->dev + 1);
+    devopt->dev->dev_name = (char *)(devopt->dev + 1 + devidlen);
+    devopt->dev->id = p->id;
+    devopt->dev->gpio = p->gpio;
+    devopt->dev->bufnum = p->bufnum;
+
+    // 复制设备ID和名称
+    memcpy(devopt->dev->dev_id, p->dev_id, devidlen);
+    memcpy(devopt->dev->dev_name, p->dev_name, devnamelen);
+
+    // 加载内核模块
+    snprintf(cmdstr, sizeof(cmdstr), "sudo insmod %s", p->dev_name);
+    ret = system(cmdstr);
+    if (ret != 0) {
+        printf("Warning: Failed to sudo insmod %s (ret=%d)\n", p->dev_name, ret);
+        snprintf(cmdstr, sizeof(cmdstr), "insmod %s", p->dev_name);
+        ret = system(cmdstr);
+        if (ret != 0) {
+            printf("Warning: Failed to insmod %s (ret=%d)\n", p->dev_name, ret);
+        }
+    }
+
+    // xdma218特定初始化
+    if (strcmp(devopt->dev->dev_id, "xdma218") == 0) {
+        ret = xdmaInit218(devopt);
+        if (ret != 0) {
+            printf("Failed xdmaInit218\n");
+            free(devopt->dev);
+            free(devopt);
+            return -5;
+        }
+    }else{
+        
+    }
+
+    // 返回设备句柄
+    *ctx = (void*)devopt;
+    return 0;
+}

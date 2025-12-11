@@ -5,7 +5,7 @@ The image detection and tracking baseboard of HIAT
 ## download and build
 
 ```bash
-git clone --recursive https://github.com/GhostLK/hiat-tracking-baseboard.git
+git clone --recursive https://github.com/HIAT-19/hiat-tracking-baseboard.git
 
 cd hiat-tracking-baseboard && mkdir build && cd build
 
