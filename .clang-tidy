@@ -27,9 +27,6 @@ Checks: [
 
 WarningsAsErrors: ''
 
-ExcludePatterns:
-  - '.*/test/'
-  - '.*/tests/'
-  - '.*/build/'
-  - '.*/third_party/'
-  - '.*/external/'
+CheckOptions:
+  - key:   clang-tidy-exclude
+    value: '*/test/*|*/tests/*|*/build/*|*/third_party/*|*/external/*'

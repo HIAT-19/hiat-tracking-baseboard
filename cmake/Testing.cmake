@@ -13,7 +13,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 option(INSTALL_GMOCK "Install GMock" OFF)
 option(INSTALL_GTEST "Install GTest" OFF)
 
-add_subdirectory(${GOOGLETEST_DIR} ${CMAKE_BINARY_DIR}/googletest)
+add_subdirectory(${GOOGLETEST_DIR} ${CMAKE_BINARY_DIR}/third_party/googletest)
 
 # Suppress uninitialized error
 target_compile_options(gtest PRIVATE -Wno-maybe-uninitialized)
