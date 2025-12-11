@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 #define MAP_SIZE (2*16UL)
-#define DEV_DDR_BASE_ADDR (0x0)
+#define DEV_DDR_BASE_ADDR (0x0U)
 #define VIDEO_FRAME_STORE_NUM 6
 typedef unsigned char UINT08;
 typedef unsigned short  UINT16;

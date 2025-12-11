@@ -3,7 +3,7 @@
 static void* mmap_control(int fd, long mapsize)
 {
     void* vir_addr;
-    vir_addr = mmap(0, mapsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    vir_addr = mmap(0, (size_t)mapsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     return vir_addr;
 }
 
@@ -43,13 +43,14 @@ static int get_data_from_fpga_ddr(int c2h_dma_fd, unsigned int fpga_ddr_addr, un
     int ret;
     
     /* 定位到FPGA DDR地址 */
-    if (lseek(c2h_dma_fd, fpga_ddr_addr, SEEK_SET) < 0) {
+    ret = (int)lseek(c2h_dma_fd, fpga_ddr_addr, SEEK_SET);
+    if (ret < 0) {
 		printf("get_data_from_fpga_ddr lseek err\n");
         return -1;  /* lseek失败 */
     }
     
     /* 读取数据 */
-    ret = read(c2h_dma_fd, buffer, size);
+    ret = (int)read(c2h_dma_fd, buffer, size);
     if (ret < 0) {
 		printf("get_data_from_fpga_ddr read err\n");
         return -1;  /* read失败 */
@@ -76,10 +77,10 @@ static int xdmaRead218(void *ctx, unsigned char** img)
 		
 	if (devdata->fds[0].revents & POLLPRI)
 	{
-		ret = lseek(devdata->gpio_fd, 0, SEEK_SET);
+		ret = (int)lseek(devdata->gpio_fd, 0, SEEK_SET);
 		if (ret == -1)
 			printf("xdmaRead lseek err\n");
-		ret = read(devdata->gpio_fd, buff, 10);
+		ret = (int)read(devdata->gpio_fd, buff, 10);
 		if (ret == -1)
 			printf("xdmaRead read err\n");
 
@@ -109,6 +110,7 @@ static int xdmaRead218(void *ctx, unsigned char** img)
 
 static int xdmaClean218(void *ctx)
 {
+    int i;
     ImgXdmaGetOpt *devopt = (ImgXdmaGetOpt *)(ctx);
     ImgXdmaInitData218 *pdevData = (ImgXdmaInitData218 *)(devopt->dev->devData);
     // 清理资源（需要实现对应的清理函数）
@@ -126,7 +128,7 @@ static int xdmaClean218(void *ctx)
                 
                 // 释放图像缓冲区
                 if (pdevData->img) {
-                    for (int i = 0; i < i; i++) {
+                    for (i = 0; i < devopt->dev->bufnum; i++) {
                         if (pdevData->img[i]) free(pdevData->img[i]);
                     }
                     free(pdevData->img);
@@ -144,11 +146,10 @@ static int xdmaPut218(void *ctx)
 {
 	ImgXdmaGetOpt *p = (ImgXdmaGetOpt *)(ctx);
     ImgXdmaInitData218 *devdata = (ImgXdmaInitData218 *)(p->dev->devData);
-    Task task;
 
     if(queue_kong(&(devdata->queue)) != 0 ){
-        task = queue_pop(&(devdata->queue), 1);
-	    task = queue_pop(&(devdata->queue), 0);
+        queue_pop(&(devdata->queue), 1);
+	    queue_pop(&(devdata->queue), 0);
     }
 	
 	return 0;
@@ -226,7 +227,7 @@ int xdmaInit218(ImgXdmaGetOpt *devopt)
     pdevData->fds[0].events = POLLPRI;
 
     // 分配FPGA DDR地址数组
-    pdevData->c2h_fpga_ddr_addr = (unsigned int*)malloc(devopt->dev->bufnum * sizeof(unsigned int));
+    pdevData->c2h_fpga_ddr_addr = (unsigned int*)malloc((unsigned int)(devopt->dev->bufnum) * sizeof(unsigned int));
     if (!pdevData->c2h_fpga_ddr_addr) {
         printf("Error: Failed to allocate FPGA DDR address array\n");
         goto cleanup;
@@ -235,9 +236,9 @@ int xdmaInit218(ImgXdmaGetOpt *devopt)
     // 设置FPGA DDR地址
     for (i = 0; i < devopt->dev->bufnum; i++) {
         if (devopt->dev->id == 0) {
-            pdevData->c2h_fpga_ddr_addr[i] = DEV_DDR_BASE_ADDR + 0x40000000 + i * 0x01000000;
+            pdevData->c2h_fpga_ddr_addr[i] = DEV_DDR_BASE_ADDR + 0x40000000 + (unsigned int)i * 0x01000000;
         } else {
-            pdevData->c2h_fpga_ddr_addr[i] = DEV_DDR_BASE_ADDR + i * 0x01000000;
+            pdevData->c2h_fpga_ddr_addr[i] = DEV_DDR_BASE_ADDR + (unsigned int)i * 0x01000000;
         }
     }
 
@@ -248,7 +249,7 @@ int xdmaInit218(ImgXdmaGetOpt *devopt)
     }
 
     // 分配图像缓冲区
-    pdevData->img = (unsigned char**)malloc(devopt->dev->bufnum * sizeof(char*));
+    pdevData->img = (unsigned char**)malloc((unsigned int)(devopt->dev->bufnum) * sizeof(char*));
     if (!pdevData->img) {
         printf("Error: Failed to allocate image buffer array\n");
         goto cleanup;
@@ -286,7 +287,7 @@ cleanup:
         
         // 释放图像缓冲区
         if (pdevData->img) {
-            for (int i = 0; i < i; i++) {
+            for (i = 0; i < devopt->dev->bufnum; i++) {
                 if (pdevData->img[i]) free(pdevData->img[i]);
             }
             free(pdevData->img);
@@ -303,10 +304,9 @@ cleanup:
 int ImgGetXdmaInit(void **ctx)
 {
     int ret = 0;
-    int i = 0;
     char cmdstr[100] = {0};
-    int devidlen = 0;
-    int devnamelen = 0;
+    size_t devidlen = 0;
+    size_t devnamelen = 0;
 
     // 参数检查
     if (!ctx) {

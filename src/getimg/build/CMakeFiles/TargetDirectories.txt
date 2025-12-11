@@ -1,6 +1,0 @@
-/mnt/hgfs/sh/3588f_218/218projects/hiat-tracking-baseboard/src/getimg/build/CMakeFiles/rebuild_cache.dir
-/mnt/hgfs/sh/3588f_218/218projects/hiat-tracking-baseboard/src/getimg/build/CMakeFiles/edit_cache.dir
-/mnt/hgfs/sh/3588f_218/218projects/hiat-tracking-baseboard/src/getimg/build/CMakeFiles/getimg_test.dir
-/mnt/hgfs/sh/3588f_218/218projects/hiat-tracking-baseboard/src/getimg/build/src/CMakeFiles/rebuild_cache.dir
-/mnt/hgfs/sh/3588f_218/218projects/hiat-tracking-baseboard/src/getimg/build/src/CMakeFiles/edit_cache.dir
-/mnt/hgfs/sh/3588f_218/218projects/hiat-tracking-baseboard/src/getimg/build/src/CMakeFiles/getimg.dir

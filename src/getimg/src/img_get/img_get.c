@@ -14,8 +14,8 @@ static int fillChessboard(unsigned char* buf, int h, int w, int blockSize)
 			offset = (y * w + x) * 2;
 			isWhite = ((x/blockSize)+(y/blockSize)) % 2 == 0;
 			value = isWhite ? 50000 : 1000;
-			buf[offset] = value & 0xff;
-			buf[offset + 1] = (value >> 8) & 0xff;
+			buf[offset] = (unsigned char)(value & 0xff);
+			buf[offset + 1] = (unsigned char)((value >> 8) & 0xff);
 			//printf("··%d\n",value);
 		}
 	}
@@ -36,9 +36,8 @@ static int fillChessboard(unsigned char* buf, int h, int w, int blockSize)
 int ImgGetInit(ImgGet** imgdev, const char* devid, const char* devname, int h, int w, int id, int gpio, int bufnum)
 {
     int ret = 0;
-    char cmdstr[100] = {0};
-    int devidlen = 0;
-    int devnamelen = 0;
+    size_t devidlen = 0;
+    size_t devnamelen = 0;
     
     // 分配ImgGet主结构体
     ImgGet* imgp = (ImgGet*)malloc(sizeof(ImgGet));
@@ -60,8 +59,8 @@ int ImgGetInit(ImgGet** imgdev, const char* devid, const char* devname, int h, i
     }
     
     // 初始化设备参数
-    imgp->dev->width = w;
-    imgp->dev->height = h;
+    imgp->dev->width = (unsigned int)w;
+    imgp->dev->height = (unsigned int)h;
     imgp->dev->dev_id = (char *)(imgp->dev + 1);           // 字符串紧随结构体之后
     imgp->dev->dev_name = (char *)(imgp->dev + 1 + devidlen); // 第二个字符串
     imgp->dev->id = id;
@@ -98,7 +97,7 @@ int ImgGetInit(ImgGet** imgdev, const char* devid, const char* devname, int h, i
     }
 
     // 棋盘格数据初始化
-    bufimg = (unsigned char*)malloc(sizeof(unsigned char) * (w*h*2));
+    bufimg = (unsigned char*)malloc(sizeof(unsigned char) * ((unsigned int)w*(unsigned int)h*2));
     if (!bufimg) {
         printf("Error: Failed to allocate bufimg structure\n");
         free(imgp->dev);
