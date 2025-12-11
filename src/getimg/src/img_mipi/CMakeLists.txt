@@ -1,0 +1,1 @@
+add_library(img_xdma STATIC img_xdma.c)
