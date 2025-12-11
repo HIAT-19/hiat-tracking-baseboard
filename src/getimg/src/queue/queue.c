@@ -19,11 +19,46 @@ int queue_init(TaskQueue *queue, int num) {
 }
 
 // 销毁队列
+// 销毁队列
 int queue_destroy(TaskQueue *queue) {
+    int i;
+    
+    if (queue == NULL) {
+        return -1;
+    }
+    
+    // 销毁互斥锁和条件变量
     pthread_mutex_destroy(&queue->mutex);
     pthread_cond_destroy(&queue->cond);
+    
+    // 释放每个Task结构体
+    if (queue->tasks != NULL) {
+        for (i = 0; i < queue->num; i++) {
+            if (queue->tasks[i] != NULL) {
+                // 如果Task结构体内有动态分配的内存，也需要释放
+                free(queue->tasks[i]);
+                queue->tasks[i] = NULL;
+            }
+        }
+        free(queue->tasks);
+        queue->tasks = NULL;
+    }
+    
+    // 释放缓冲区指针数组
+    if (queue->Tdata.buffer != NULL) {
+        free(queue->Tdata.buffer);
+        queue->Tdata.buffer = NULL;
+    }
+    
+    // 重置队列状态
+    queue->front = 0;
+    queue->rear = 0;
+    queue->count = 0;
+    queue->num = 0;
+    
     return 0;
 }
+
 
 // 入队操作
 // 返回值：有空间返回非-数，-1成功写入，-2没有空间
