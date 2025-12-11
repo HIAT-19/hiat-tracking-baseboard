@@ -2,10 +2,9 @@
 
 #include <cstdint>
 #include <memory>
-
 #include <string>
-#include <string_view>
-#include <fmt/format.h>
+
+#include "fmt/format.h"
 
 namespace sx
 {
