@@ -5,6 +5,9 @@ project(FPrime C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Generate compile commands for tools like clang-tidy and clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Set the cmake script directory
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 
