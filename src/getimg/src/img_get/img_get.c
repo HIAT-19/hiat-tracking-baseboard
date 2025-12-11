@@ -156,6 +156,7 @@ int ImgGetRead(void *ctx, unsigned char** img)
     ret = p->read_frame(ctx, img);
     if(ret == -1){ //超时没返回,输出棋盘格
         *img = bufimg;
+        return 1;
     }
     
     return 0;

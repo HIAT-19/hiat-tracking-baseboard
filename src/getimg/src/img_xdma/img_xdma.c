@@ -6,7 +6,13 @@ static void* mmap_control(int fd, long mapsize)
     vir_addr = mmap(0, (size_t)mapsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     return vir_addr;
 }
-
+// 释放映射的函数
+static void unmap_control(void* addr, long mapsize)
+{
+    if (addr != MAP_FAILED && addr != NULL) {
+        munmap(addr, (size_t)mapsize);
+    }
+}
 static int analysis_camera(Fpgacamera218 *fpgacamera, unsigned char* control_base, int cameralen)
 {
     unsigned char *buff;
@@ -63,19 +69,20 @@ static int get_data_from_fpga_ddr(int c2h_dma_fd, unsigned int fpga_ddr_addr, un
 static int xdmaRead218(void *ctx, unsigned char** img)
 {
 	ImgXdmaGetOpt *p = (ImgXdmaGetOpt *)(ctx);
+    
     ImgXdmaInitData218 *devdata = (ImgXdmaInitData218 *)(p->dev->devData);
 	int ret = 0;
 	int ct_k;
 	Task task;
 	char buff[11]= {0};
 	
-	ret = poll(devdata->fds, 1, 20);//等待20ms超时
+	ret = poll(p->dev->fds, 1, 20);//等待20ms超时
 	if (ret <= 0){
 		printf("poll on\n");
 		return -1;
 	}
 		
-	if (devdata->fds[0].revents & POLLPRI)
+	if (p->dev->fds[0].revents & POLLPRI)
 	{
 		ret = (int)lseek(devdata->gpio_fd, 0, SEEK_SET);
 		if (ret == -1)
@@ -84,7 +91,7 @@ static int xdmaRead218(void *ctx, unsigned char** img)
 		if (ret == -1)
 			printf("xdmaRead read err\n");
 
-		analysis_camera(&(devdata->fpgacamera), devdata->control_base, 0);
+		analysis_camera(&(devdata->fpgacamera), p->dev->control_base, 0);
 		printf("camera_id = %d\n", devdata->fpgacamera.camera_id);
 		printf("buffer_index = %d\n", devdata->fpgacamera.buffer_index);
 		printf("in_speed = %d\n", devdata->fpgacamera.in_speed);
@@ -93,14 +100,14 @@ static int xdmaRead218(void *ctx, unsigned char** img)
 		printf("ddr_error_count = %d\n", devdata->fpgacamera.ddr_error_count);
 
 		//放入队列
-		ct_k = queue_push(&(devdata->queue), task, 1);
+		ct_k = queue_push(&(p->dev->queue), task, 1);
 		if(ct_k < 0){
 			printf("xdma queue_push ct_k no\n");
 		}else{
-			get_data_from_fpga_ddr(devdata->c2h_dma_fd, devdata->c2h_fpga_ddr_addr[devdata->fpgacamera.buffer_index], devdata->queue.Tdata.buffer[ct_k], p->dev->width * p->dev->height * 2);	
+			get_data_from_fpga_ddr(p->dev->c2h_dma_fd, devdata->c2h_fpga_ddr_addr[devdata->fpgacamera.buffer_index], p->dev->queue.Tdata.buffer[ct_k], p->dev->width * p->dev->height * 2);	
 			task.free_buf_id = ct_k;
-			*img = devdata->queue.Tdata.buffer[ct_k];
-			queue_push(&(devdata->queue), task, 0);
+			*img = p->dev->queue.Tdata.buffer[ct_k];
+			queue_push(&(p->dev->queue), task, 0);
 		}
 	}
     
@@ -110,31 +117,38 @@ static int xdmaRead218(void *ctx, unsigned char** img)
 
 static int xdmaClean218(void *ctx)
 {
+    ImgXdmaInitData218 *pdevData = ctx;
+    if (pdevData) {
+        // 关闭文件描述符
+        if (pdevData->gpio_fd >= 0) close(pdevData->gpio_fd);
+        // 释放内存
+        if (pdevData->c2h_fpga_ddr_addr) free(pdevData->c2h_fpga_ddr_addr);
+        free(pdevData);
+    }
+    return 0;
+}
+static int xdmaClean(void *ctx)
+{
     int i;
     ImgXdmaGetOpt *devopt = (ImgXdmaGetOpt *)(ctx);
-    ImgXdmaInitData218 *pdevData = (ImgXdmaInitData218 *)(devopt->dev->devData);
     // 清理资源（需要实现对应的清理函数）
-    if (devopt) {
-        if (devopt->dev) {
-             if (pdevData) {
-                // 关闭文件描述符
-                if (pdevData->c2h_dma_fd >= 0) close(pdevData->c2h_dma_fd);
-                if (pdevData->control_fd >= 0) close(pdevData->control_fd);
-                if (pdevData->events0_fd >= 0) close(pdevData->events0_fd);
-                if (pdevData->gpio_fd >= 0) close(pdevData->gpio_fd);
-                
-                // 释放内存
-                if (pdevData->c2h_fpga_ddr_addr) free(pdevData->c2h_fpga_ddr_addr);
-                
-                // 释放图像缓冲区
-                if (pdevData->img) {
-                    for (i = 0; i < devopt->dev->bufnum; i++) {
-                        if (pdevData->img[i]) free(pdevData->img[i]);
-                    }
-                    free(pdevData->img);
+    if(devopt){
+        if(devopt->dev){
+            if (devopt->dev->control_base) unmap_control((void*)(devopt->dev->control_base), 0x40);
+            if (devopt->dev->c2h_dma_fd >= 0) close(devopt->dev->c2h_dma_fd);
+            if (devopt->dev->control_fd >= 0) close(devopt->dev->control_fd);
+            if (devopt->dev->events0_fd >= 0) close(devopt->dev->events0_fd);
+            if (devopt->dev->img) {
+                for (i = 0; i < devopt->dev->bufnum; i++) {
+                    if (devopt->dev->img[i]) free(devopt->dev->img[i]);
                 }
-                free(pdevData);
+                free(devopt->dev->img);
             }
+            queue_destroy(&(devopt->dev->queue));
+            // xdma218特定
+            if (strcmp(devopt->dev->dev_id, "xdma218") == 0) {
+                xdmaClean218(devopt->dev->devData);
+            }  
             free(devopt->dev);
         }
         free(devopt);
@@ -142,14 +156,13 @@ static int xdmaClean218(void *ctx)
 	return 0;
 }
 
-static int xdmaPut218(void *ctx)
+static int xdmaPut(void *ctx)
 {
 	ImgXdmaGetOpt *p = (ImgXdmaGetOpt *)(ctx);
-    ImgXdmaInitData218 *devdata = (ImgXdmaInitData218 *)(p->dev->devData);
 
-    if(queue_kong(&(devdata->queue)) != 0 ){
-        queue_pop(&(devdata->queue), 1);
-	    queue_pop(&(devdata->queue), 0);
+    if(queue_kong(&(p->dev->queue)) != 0 ){
+        queue_pop(&(p->dev->queue), 1);
+	    queue_pop(&(p->dev->queue), 0);
     }
 	
 	return 0;
@@ -164,33 +177,10 @@ int xdmaInit218(ImgXdmaGetOpt *devopt)
     if (!pdevData) {
         goto cleanup;
     }
-    // 打开XDMA设备文件
-    pdevData->c2h_dma_fd = open("/dev/xdma0_c2h_0", O_RDWR | O_NONBLOCK);
-    if (pdevData->c2h_dma_fd < 0) {
-        printf("Error: Failed to open /dev/xdma0_c2h_0\n");
-        goto cleanup;
-    }
-
-    pdevData->control_fd = open("/dev/xdma0_user", O_RDWR | O_SYNC);
-    if (pdevData->control_fd < 0) {
-        printf("Error: Failed to open /dev/xdma0_user\n");
-        goto cleanup;
-    }
-
-    pdevData->events0_fd = open("/dev/xdma0_events_0", O_RDWR | O_SYNC);
-    if (pdevData->events0_fd == -1) {
-        printf("Error: Failed to open /dev/xdma0_events_0\n");
-        goto cleanup;
-    }
-    // 映射控制寄存器
-    pdevData->control_base = (unsigned char*)mmap_control(pdevData->control_fd, MAP_SIZE);
-    if (!pdevData->control_base) {
-        printf("Error: Failed to mmap control registers\n");
-        goto cleanup;
-    }
+    
     // 调整控制寄存器基址（设备0有偏移）
     if (devopt->dev->id == 0) {
-        pdevData->control_base += 16;
+        devopt->dev->control_base += 16;
     }
     // GPIO配置
     memset(cmdstr,'\0',100);
@@ -223,8 +213,8 @@ int xdmaInit218(ImgXdmaGetOpt *devopt)
     }
 
     // 设置pollfd
-    pdevData->fds[0].fd = pdevData->gpio_fd;
-    pdevData->fds[0].events = POLLPRI;
+    devopt->dev->fds[0].fd = pdevData->gpio_fd;
+    devopt->dev->fds[0].events = POLLPRI;
 
     // 分配FPGA DDR地址数组
     pdevData->c2h_fpga_ddr_addr = (unsigned int*)malloc((unsigned int)(devopt->dev->bufnum) * sizeof(unsigned int));
@@ -242,31 +232,8 @@ int xdmaInit218(ImgXdmaGetOpt *devopt)
         }
     }
 
-    // 初始化队列
-    if (queue_init(&(pdevData->queue), devopt->dev->bufnum) != 0) {
-        printf("Error: Failed to initialize queue\n");
-        goto cleanup;
-    }
-
-    // 分配图像缓冲区
-    pdevData->img = (unsigned char**)malloc((unsigned int)(devopt->dev->bufnum) * sizeof(char*));
-    if (!pdevData->img) {
-        printf("Error: Failed to allocate image buffer array\n");
-        goto cleanup;
-    }
-
-    for (i = 0; i < devopt->dev->bufnum; i++) {
-        pdevData->img[i] = (unsigned char*)malloc(devopt->dev->width * devopt->dev->height * 2);
-        if (!pdevData->img[i]) {
-            printf("Error: Failed to allocate image buffer %d\n", i);
-            goto cleanup;
-        }
-        memset(pdevData->img[i], 0, devopt->dev->width * devopt->dev->height * 2);
-        pdevData->queue.Tdata.buffer[i] = pdevData->img[i];
-    }
-    // 设置操作函数
-    devopt->put_frame = xdmaPut218;
-    devopt->clean_frame = xdmaClean218;
+    
+  
     devopt->read_frame = xdmaRead218;
 
     devopt->dev->devData = pdevData;
@@ -277,21 +244,9 @@ cleanup:
 
     if (pdevData) {
         // 关闭文件描述符
-        if (pdevData->c2h_dma_fd >= 0) close(pdevData->c2h_dma_fd);
-        if (pdevData->control_fd >= 0) close(pdevData->control_fd);
-        if (pdevData->events0_fd >= 0) close(pdevData->events0_fd);
         if (pdevData->gpio_fd >= 0) close(pdevData->gpio_fd);
-        
         // 释放内存
         if (pdevData->c2h_fpga_ddr_addr) free(pdevData->c2h_fpga_ddr_addr);
-        
-        // 释放图像缓冲区
-        if (pdevData->img) {
-            for (i = 0; i < devopt->dev->bufnum; i++) {
-                if (pdevData->img[i]) free(pdevData->img[i]);
-            }
-            free(pdevData->img);
-        }
         free(pdevData);
     }
     return -5;
@@ -303,6 +258,7 @@ cleanup:
  */
 int ImgGetXdmaInit(void **ctx)
 {
+    int i;
     int ret = 0;
     char cmdstr[100] = {0};
     size_t devidlen = 0;
@@ -331,12 +287,11 @@ int ImgGetXdmaInit(void **ctx)
     devidlen = strlen(p->dev_id) + 1;
     devnamelen = strlen(p->dev_name) + 1;
 
-    // 分配设备数据内存（修正内存分配大小）
+    // 分配设备数据内存
     devopt->dev = (ImgGetXdmaInitData*)malloc(sizeof(ImgGetXdmaInitData) + devidlen + devnamelen);
     if (!devopt->dev) {
         printf("Error: Failed to allocate device data\n");
-        free(devopt);
-        return -4;
+        goto cleanupXdmaInit;
     }
 
     // 初始化设备参数
@@ -364,20 +319,89 @@ int ImgGetXdmaInit(void **ctx)
         }
     }
 
+    // 打开XDMA设备文件
+    devopt->dev->c2h_dma_fd = open("/dev/xdma0_c2h_0", O_RDWR | O_NONBLOCK);
+    if (devopt->dev->c2h_dma_fd < 0) {
+        printf("Error: Failed to open /dev/xdma0_c2h_0\n");
+        goto cleanupXdmaInit;
+    }
+
+    devopt->dev->control_fd = open("/dev/xdma0_user", O_RDWR | O_SYNC);
+    if (devopt->dev->control_fd < 0) {
+        printf("Error: Failed to open /dev/xdma0_user\n");
+        goto cleanupXdmaInit;
+    }
+
+    devopt->dev->events0_fd = open("/dev/xdma0_events_0", O_RDWR | O_SYNC);
+    if (devopt->dev->events0_fd == -1) {
+        printf("Error: Failed to open /dev/xdma0_events_0\n");
+        goto cleanupXdmaInit;
+    }
+    // 映射控制寄存器
+    devopt->dev->control_base = (unsigned char*)mmap_control(devopt->dev->control_fd, 0x40);
+    if (!devopt->dev->control_base) {
+        printf("Error: Failed to mmap control registers\n");
+        goto cleanupXdmaInit;
+    }
+
+    // 初始化队列
+    if (queue_init(&(devopt->dev->queue), devopt->dev->bufnum) != 0) {
+        printf("Error: Failed to initialize queue\n");
+        goto cleanupXdmaInit;
+    }
+
+    // 分配图像缓冲区
+    devopt->dev->img = (unsigned char**)malloc((unsigned int)(devopt->dev->bufnum) * sizeof(char*));
+    if (!devopt->dev->img) {
+        printf("Error: Failed to allocate image buffer array\n");
+        goto cleanupXdmaInit;
+    }
+
+    for (i = 0; i < devopt->dev->bufnum; i++) {
+        devopt->dev->img[i] = (unsigned char*)malloc(devopt->dev->width * devopt->dev->height * 2);
+        if (!devopt->dev->img[i]) {
+            printf("Error: Failed to allocate image buffer %d\n", i);
+            goto cleanupXdmaInit;
+        }
+        memset(devopt->dev->img[i], 0, devopt->dev->width * devopt->dev->height * 2);
+        devopt->dev->queue.Tdata.buffer[i] = devopt->dev->img[i];
+    }
     // xdma218特定初始化
     if (strcmp(devopt->dev->dev_id, "xdma218") == 0) {
+        
         ret = xdmaInit218(devopt);
         if (ret != 0) {
             printf("Failed xdmaInit218\n");
-            free(devopt->dev);
-            free(devopt);
-            return -5;
+            goto cleanupXdmaInit;
         }
     }else{
         
     }
-
+    // 设置操作函数
+    devopt->put_frame = xdmaPut;
+    devopt->clean_frame = xdmaClean;
     // 返回设备句柄
     *ctx = (void*)devopt;
     return 0;
+
+cleanupXdmaInit:
+    // 清理资源（需要实现对应的清理函数）
+    if(devopt){
+        if(devopt->dev){
+            if (devopt->dev->control_base) unmap_control((void*)(devopt->dev->control_base), 0x40);
+            if (devopt->dev->c2h_dma_fd >= 0) close(devopt->dev->c2h_dma_fd);
+            if (devopt->dev->control_fd >= 0) close(devopt->dev->control_fd);
+            if (devopt->dev->events0_fd >= 0) close(devopt->dev->events0_fd);
+            if (devopt->dev->img) {
+                for (i = 0; i < devopt->dev->bufnum; i++) {
+                    if (devopt->dev->img[i]) free(devopt->dev->img[i]);
+                }
+                free(devopt->dev->img);
+            }
+            queue_destroy(&(devopt->dev->queue));
+            free(devopt->dev);
+        }
+        free(devopt);
+    }
+    return -5;
 }

@@ -52,28 +52,14 @@ typedef struct
 }Fpgacamerayk, * PFpgacamerayk;
 #pragma pack()
 typedef struct ImgXdmaInitDatayk_ {
-    int c2h_dma_fd;
-	int control_fd;
-	int events0_fd;
     int gpio_fd;
     unsigned int *c2h_fpga_ddr_addr;
-    struct pollfd fds[1];
     Fpgacamerayk fpgacamera;
-    unsigned char** img;
-    TaskQueue queue;
-    unsigned char* control_base;
 } ImgXdmaInitDatayk;
 typedef struct ImgXdmaInitData218_ {
-    int c2h_dma_fd;
-	int control_fd;
-	int events0_fd;
     int gpio_fd;
     unsigned int *c2h_fpga_ddr_addr;
-    struct pollfd fds[1];
     Fpgacamera218 fpgacamera;
-    unsigned char** img;
-    TaskQueue queue;
-    unsigned char* control_base;
 } ImgXdmaInitData218;
 typedef struct ImgGetXdmaInitData_ {
     unsigned int width;		  ///< 宽度
@@ -84,6 +70,13 @@ typedef struct ImgGetXdmaInitData_ {
     int gpio;
     int bufnum;
     void* devData;
+    int c2h_dma_fd;
+	int control_fd;
+	int events0_fd;
+    struct pollfd fds[1];
+    unsigned char** img;
+    TaskQueue queue;
+    unsigned char* control_base;
 } ImgGetXdmaInitData;
 
 typedef struct ImgXdmaGetOpt_ {
