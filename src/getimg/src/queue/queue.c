@@ -6,8 +6,8 @@ int queue_init(TaskQueue *queue, int num) {
     queue->front = 0;
     queue->rear = 0;
     queue->count = 0;
-    queue->Tdata.buffer = (unsigned char**)malloc(num * sizeof(char*));
-    queue->tasks = (Task**)malloc(num * sizeof(Task*));
+    queue->Tdata.buffer = (unsigned char**)malloc((unsigned int)num * sizeof(char*));
+    queue->tasks = (Task**)malloc((unsigned int)num * sizeof(Task*));
     for(i = 0; i < num; i++){
         queue->tasks[i] = (Task*)malloc(sizeof(Task));
         memset(queue->tasks[i], 0, sizeof(Task));
@@ -52,7 +52,7 @@ int queue_push(TaskQueue *queue, Task task, int flag) {
 
 // 出队操作
 Task queue_pop(TaskQueue *queue, int flag) {
-    Task task;
+    Task task = {-1};
     pthread_mutex_lock(&queue->mutex);
 
     if (flag) {
