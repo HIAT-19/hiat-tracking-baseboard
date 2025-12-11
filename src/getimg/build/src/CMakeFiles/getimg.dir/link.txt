@@ -1,0 +1,2 @@
+/home/tronlong/RK3588/rk3588-buildroot-2021.11-sdk-v1.1/buildroot/output/rockchip_rk3588/host/bin/aarch64-buildroot-linux-gnu-ar qc libgetimg.a  CMakeFiles/getimg.dir/img_get/img_get.c.o CMakeFiles/getimg.dir/img_xdma/img_xdma.c.o CMakeFiles/getimg.dir/queue/queue.c.o
+/home/tronlong/RK3588/rk3588-buildroot-2021.11-sdk-v1.1/buildroot/output/rockchip_rk3588/host/bin/aarch64-buildroot-linux-gnu-ranlib libgetimg.a
