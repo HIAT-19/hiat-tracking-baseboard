@@ -7,6 +7,7 @@ int queue_init(TaskQueue *queue, int num) {
     queue->rear = 0;
     queue->count = 0;
     queue->Tdata.buffer = (unsigned char**)malloc((unsigned int)num * sizeof(char*));
+    queue->Tdata.buffer8 = (unsigned char**)malloc((unsigned int)num * sizeof(char*));
     queue->tasks = (Task**)malloc((unsigned int)num * sizeof(Task*));
     for(i = 0; i < num; i++){
         queue->tasks[i] = (Task*)malloc(sizeof(Task));
@@ -49,6 +50,11 @@ int queue_destroy(TaskQueue *queue) {
         free(queue->Tdata.buffer);
         queue->Tdata.buffer = NULL;
     }
+    // 释放缓冲区指针数组
+    if (queue->Tdata.buffer8 != NULL) {
+        free(queue->Tdata.buffer8);
+        queue->Tdata.buffer8 = NULL;
+    }
     
     // 重置队列状态
     queue->front = 0;
@@ -87,7 +93,8 @@ int queue_push(TaskQueue *queue, Task task, int flag) {
 
 // 出队操作
 Task queue_pop(TaskQueue *queue, int flag) {
-    Task task = {-1};
+    Task task = {-1,0,NULL,0};
+
     pthread_mutex_lock(&queue->mutex);
 
     if (flag) {
@@ -104,6 +111,27 @@ Task queue_pop(TaskQueue *queue, int flag) {
     pthread_mutex_unlock(&queue->mutex);
     return task;
 }
+
+Task queue_pop_main(TaskQueue *queue, int flag) 
+{
+    Task task = {-1,0,NULL,0};
+    pthread_mutex_lock(&queue->mutex);
+
+    while (queue->count == 0) {
+        pthread_mutex_unlock(&queue->mutex);
+        return task;
+    }
+    task = *queue->tasks[queue->front];
+    while ((queue->count != 0) && ((task.flag & flag) == flag)){
+        queue->front = (queue->front + 1) % queue->num;
+        queue->count--;
+        if(queue->count == 0) break;
+        task = *queue->tasks[queue->front];
+    }
+
+    pthread_mutex_unlock(&queue->mutex);
+    return task;
+}
 // 判断是否空
 int queue_kong(TaskQueue *queue) {
     pthread_mutex_lock(&queue->mutex);
@@ -113,4 +141,35 @@ int queue_kong(TaskQueue *queue) {
     }
     pthread_mutex_unlock(&queue->mutex);
     return 1;
+}
+
+// 获取,以及更新flag
+Task queue_acquire_or_modify_task(TaskQueue *queue, Task taskin, int flag, int getflag) {
+    Task task = {-1,0,NULL,0};
+    int i = 0;
+    pthread_mutex_lock(&queue->mutex);
+
+    if (flag) {
+        while (queue->count == 0) {
+            pthread_cond_wait(&queue->cond, &queue->mutex);
+        }
+        task = *queue->tasks[queue->front];
+        while(task.flag & getflag){
+            i++;
+            if((queue->count - i) == 0){ //防止越界
+                pthread_mutex_unlock(&queue->mutex);
+                pthread_cond_wait(&queue->cond, &queue->mutex);
+            }
+            task = *queue->tasks[(queue->front + i) % queue->num];
+        }
+    }else {
+        task = *queue->tasks[queue->front];
+        while(taskin.free_buf_id != task.free_buf_id){
+            i++;
+            task = *queue->tasks[(queue->front + i) % queue->num];
+        }
+        *queue->tasks[(queue->front + i) % queue->num] = taskin;
+    }
+    pthread_mutex_unlock(&queue->mutex);
+    return task;
 }

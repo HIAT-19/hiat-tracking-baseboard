@@ -1,6 +1,7 @@
 #include "img_get.h"
 #include "img_xdma.h"
-
+#include "img_mipi.h"
+#include "img_local.h"
 // 棋盘格数据
 static unsigned char* bufimg;
 static int fillChessboard(unsigned char* buf, int h, int w, int blockSize)
@@ -76,7 +77,13 @@ int ImgGetInit(ImgGet** imgdev, const char* devid, const char* devname, int h, i
     // 根据设备类型执行相应初始化
     if (strcmp(devid, "mipi") == 0 || strcmp(devid, "MIPI") == 0) {
         // MIPI设备初始化（暂未实现）
-        // ret = mipi_camera_init(&imgp->ctx);
+        ret = ImgGetMipiInit(&imgp->ctx);
+        if (ret != 0) {
+            printf("Error: XDMA device initialization failed\n");
+            free(imgp->dev);
+            free(imgp);
+            return -1;
+        }
     } 
     else if (strncmp(devid, "xdma", 4) == 0 || strncmp(devid, "XDMA", 4) == 0) {
         // XDMA设备初始化
@@ -88,7 +95,16 @@ int ImgGetInit(ImgGet** imgdev, const char* devid, const char* devname, int h, i
             return -1;
         }
     }
-    else {
+    else if (strncmp(devid, "local", 5) == 0 || strncmp(devid, "LOCAL", 5) == 0) {
+        // local设备初始化
+        ret = ImgGetLocalInit(&imgp->ctx);
+        if (ret != 0) {
+            printf("Error: local device initialization failed\n");
+            free(imgp->dev);
+            free(imgp);
+            return -1;
+        }
+    }else {
         // 未知设备类型
         printf("Error: Unknown device type: %s\n", devid);
         free(imgp->dev);
@@ -134,7 +150,7 @@ int ImgPut(void *ctx)
  * 读取图像帧数据
  * @param ctx 设备上下文指针
  * @param img 输出参数，返回图像数据指针
- * @return 成功返回0，失败返回-1
+ * @return 成功返回0，失败返回-1,棋盘格1
  */
 int ImgGetRead(void *ctx, unsigned char** img)
 {
@@ -172,3 +188,65 @@ int ImgGetClean(ImgGet** imgdev)
     free(bufimg);
 	return 0;
 }
+
+void TransferToBYTEIMG1(ImgGet** imgdev, uint8_t* Image16, uint8_t* IMG2, uint32_t *pHist16To8, uint8_t *pLUT16To8 )
+{
+    ImgGet* imgp = *imgdev;
+
+ 	uint8_t* DATA= (uint8_t*)Image16;
+ 	int i, imagesize =  (int)imgp->dev->width *  (int)imgp->dev->height, Sum, Threshold = (int)(0.001 *  ((int)imgp->dev->width *  (int)imgp->dev->height)), Scale = 0;
+ 	uint16_t StartV = 0, EndV = 0, *tmpPoint = NULL;
+ 	uint32_t *hist  = (uint32_t *)(pHist16To8);
+ 	uint8_t  *LUT   = (uint8_t *)(pLUT16To8);
+ 	uint8_t *lpImgNow, *lpNow, *lpEnd = DATA + imagesize * 2;
+ 	memset(hist, 0, 16384 * sizeof(int));
+ 	for(lpNow = DATA; lpNow < lpEnd; lpNow += 2)
+ 	{
+ 		tmpPoint = (uint16_t *)(lpNow);
+ 		hist[(*tmpPoint)>>2]++;  
+ 	}
+ 	Sum = 0;
+ 
+ 	for (i = 2; i <= 16381; i++)
+ 	{
+ 		Sum += (int)hist[i];
+ 		if (Sum > Threshold)
+ 		{
+ 			StartV = (uint16_t)i;
+ 			break;
+ 		}
+ 	}
+ 	Sum = 0;
+ 	for (i = 16381; i >= 2; i--)
+ 	{
+ 		Sum += (int)hist[i];
+ 		if (Sum > Threshold)
+ 		{
+ 			EndV = (uint16_t)i;
+ 			break;
+ 		}
+ 	}
+ 
+ 	if( abs(EndV - StartV) > 1 )
+ 	{
+ 		Scale = (int)(255 * 65536 / (EndV - StartV));//点源目标可能为0，会引起除法部件异常
+ 	}
+ 	else
+ 	{
+ 		Scale = (int)(255 * 65536);
+ 	}
+ 
+ 	for (i = 0; i < StartV; i++)
+ 		LUT[i] = 0;
+ 	for (i = EndV; i < 16384; i++)
+ 		LUT[i] = 255;
+ 	for (i = StartV; i < EndV; i++)
+ 		LUT[i] = (uint8_t)(((i - StartV) * Scale) >> 16);
+ 	for(lpNow = DATA, lpImgNow = IMG2; lpNow < lpEnd; lpNow += 2, lpImgNow++)
+ 	{	
+ 		*lpImgNow = LUT[(*(uint16_t *)(lpNow))>>2];
+ 	}
+
+	return;
+}
+

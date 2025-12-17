@@ -13,6 +13,7 @@ static void unmap_control(void* addr, long mapsize)
         munmap(addr, (size_t)mapsize);
     }
 }
+// xdma218专用
 static int analysis_camera(Fpgacamera218 *fpgacamera, unsigned char* control_base, int cameralen)
 {
     unsigned char *buff;
@@ -65,56 +66,89 @@ static int get_data_from_fpga_ddr(int c2h_dma_fd, unsigned int fpga_ddr_addr, un
     return 0;  
 }
 
-
+/**
+ * XDMA 218读取函数
+ * 从XDMA设备读取图像数据到缓冲区
+ * 
+ * @param ctx 设备上下文指针，指向ImgXdmaGetOpt结构
+ * @param img 输出参数，指向存储图像数据的缓冲区指针
+ * @return 成功返回0，失败返回-1
+ */
 static int xdmaRead218(void *ctx, unsigned char** img)
 {
+    // 转换上下文指针为ImgXdmaGetOpt结构
 	ImgXdmaGetOpt *p = (ImgXdmaGetOpt *)(ctx);
     
+    // 获取XDMA 218特定设备数据
     ImgXdmaInitData218 *devdata = (ImgXdmaInitData218 *)(p->dev->devData);
 	int ret = 0;
 	int ct_k;
-	Task task;
-	char buff[11]= {0};
+	Task task = {0};              // 任务结构体，用于队列操作
+	char buff[11]= {0};     // 缓冲区，用于读取GPIO值
 	
-	ret = poll(p->dev->fds, 1, 20);//等待20ms超时
+    // 使用poll等待GPIO事件，超时时间20ms
+	ret = poll(p->dev->fds, 1, 20); // 等待20ms超时
 	if (ret <= 0){
-		printf("poll on\n");
+        // 超时或错误，无数据可读
+		printf("poll timeout\n");
 		return -1;
 	}
 		
+    // 检查是否发生POLLPRI事件（GPIO上升沿）
 	if (p->dev->fds[0].revents & POLLPRI)
 	{
+        // 重新定位到GPIO文件开始位置
 		ret = (int)lseek(devdata->gpio_fd, 0, SEEK_SET);
-		if (ret == -1)
-			printf("xdmaRead lseek err\n");
+		if (ret == -1){
+            printf("xdmaRead lseek err\n");
+            return -1;
+        }
+
+        // 读取GPIO值（触发poll的事件）
 		ret = (int)read(devdata->gpio_fd, buff, 10);
-		if (ret == -1)
-			printf("xdmaRead read err\n");
+		if (ret == -1){
+            printf("xdmaRead read err\n");
+            return -1;
+        }
 
+        // 解析FPGA相机寄存器数据
 		analysis_camera(&(devdata->fpgacamera), p->dev->control_base, 0);
-		printf("camera_id = %d\n", devdata->fpgacamera.camera_id);
-		printf("buffer_index = %d\n", devdata->fpgacamera.buffer_index);
-		printf("in_speed = %d\n", devdata->fpgacamera.in_speed);
-		printf("out_speed = %d\n", devdata->fpgacamera.out_speed);
-		printf("buffer_count = %d\n", devdata->fpgacamera.buffer_count);
-		printf("ddr_error_count = %d\n", devdata->fpgacamera.ddr_error_count);
+        
+        // 调试信息：打印相机状态
+		// printf("camera_id = %d\n", devdata->fpgacamera.camera_id);
+		// printf("buffer_index = %d\n", devdata->fpgacamera.buffer_index);
+		// printf("in_speed = %d\n", devdata->fpgacamera.in_speed);
+		// printf("out_speed = %d\n", devdata->fpgacamera.out_speed);
+		// printf("buffer_count = %d\n", devdata->fpgacamera.buffer_count);
+		// printf("ddr_error_count = %d\n", devdata->fpgacamera.ddr_error_count);
 
-		//放入队列
+		// 将任务放入队列
 		ct_k = queue_push(&(p->dev->queue), task, 1);
-		if(ct_k < 0){
-			printf("xdma queue_push ct_k no\n");
+		if(ct_k == -1){
+            // 入队失败，空间满了
+			printf("xdmaRead queue_push ct_k no\n");
+            return -1;
 		}else{
-			get_data_from_fpga_ddr(p->dev->c2h_dma_fd, devdata->c2h_fpga_ddr_addr[devdata->fpgacamera.buffer_index], p->dev->queue.Tdata.buffer[ct_k], p->dev->width * p->dev->height * 2);	
-			task.free_buf_id = ct_k;
-			*img = p->dev->queue.Tdata.buffer[ct_k];
+            // 从FPGA DDR读取图像数据到队列缓冲区
+			ret = get_data_from_fpga_ddr(p->dev->c2h_dma_fd, 
+                                 devdata->c2h_fpga_ddr_addr[devdata->fpgacamera.buffer_index], 
+                                 p->dev->queue.Tdata.buffer[ct_k], 
+                                 p->dev->width * p->dev->height * 2);	
+            if (ret == -1){
+                printf("xdmaRead get_data_from_fpga_ddr err\n");
+                return -1;
+            }
+            
+            // 设置任务参数
+			task.free_buf_id = ct_k;                  // 缓冲区ID
+			*img = p->dev->queue.Tdata.buffer[ct_k];  // 输出图像数据指针
+            
 			queue_push(&(p->dev->queue), task, 0);
 		}
 	}
     
-	
-	return 0;
+	return 0;  // 成功返回
 }
-
 static int xdmaClean218(void *ctx)
 {
     ImgXdmaInitData218 *pdevData = ctx;
@@ -368,7 +402,6 @@ int ImgGetXdmaInit(void **ctx)
     }
     // xdma218特定初始化
     if (strcmp(devopt->dev->dev_id, "xdma218") == 0) {
-        
         ret = xdmaInit218(devopt);
         if (ret != 0) {
             printf("Failed xdmaInit218\n");

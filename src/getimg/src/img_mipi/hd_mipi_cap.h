@@ -19,7 +19,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#define GET_IMG_UYVY  (1)
 /* Exported constants --------------------------------------------------------*/
 #define HD_MAX_PATH_LEN 255
 
@@ -33,8 +33,8 @@ typedef struct HDMipiBuffer HDMipiBuffer;
  * @note 接口不正常时需返回黑色图像，请设置 width、height、stride 为实际值
  */
 typedef struct HDDeviceParam {
-	const char *dev_name; ///< 设备名，mipi作设备名，local作图像目录
-	const char *dev_id;	  ///< 设备标识
+	char *dev_name; ///< 设备名，mipi作设备名，local作图像目录
+	char *dev_id;	  ///< 设备标识
 	size_t width;		  ///< 宽度
 	size_t height;		  ///< 高度
 	size_t stride;		  ///< 步长
@@ -45,7 +45,24 @@ typedef struct HDDeviceParam {
 	float cam_instl_yaw;	///< 相机安装角
 	float cam_instl_roll;	///< 相机安装叫
 } HDDeviceParam;
-
+/**
+ * @struct HDMipiDevState
+ * @brief MIPI视频设备状态结构体
+ *
+ * 用于描述一个MIPI摄像头设备的所有运行时状态。
+ */
+typedef struct HDMipiDevState {
+	int fd;                              ///< 设备文件描述符
+	int num;// 缓冲区数
+	int state;// 图像类型
+	unsigned int width;		  ///< 宽度
+	unsigned int height;		  ///< 高度
+	bool is_error;                        ///< 设备是否错误，如果错误，则接口只会传出黑色图像
+	HDDeviceParam param;				 ///< 设备参数
+	struct HDBufferInfo *buffers_info;   ///< 申请的所有buffer信息
+	struct v4l2_format format;           ///< 当前设备格式
+	struct v4l2_buffer cur_buffer;       ///< 当前buffer信息
+} HDMipiDevState;
 /**
  * @brief 红外/可见光图像数据
  */

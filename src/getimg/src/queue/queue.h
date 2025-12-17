@@ -26,11 +26,24 @@ typedef unsigned int   uint32_t;
 
 #define MAX_TASKS 512
 
+#define FLAG_1 (0x01)
+#define FLAG_2 (0x02)
+#define FLAG_3 (0x04)
+#define FLAG_4 (0x08)
+#define FLAG_5 (0x10)
+#define FLAG_6 (0x20)
+#define FLAG_7 (0x40)
+#define FLAG_8 (0x80)
+
 typedef struct {
     int free_buf_id;
+    UINT64 time;
+    void *usrdata;
+    int flag;
 } Task;
 typedef struct {
     unsigned char **buffer;
+    unsigned char **buffer8;
 } Taskdata;
 typedef struct {
    // Task tasks[MAX_TASKS];
@@ -53,7 +66,8 @@ int queue_destroy(TaskQueue *queue);
 int queue_push(TaskQueue *queue, Task task, int flag);
 Task queue_pop(TaskQueue *queue, int flag);
 int queue_kong(TaskQueue *queue);
-
+Task queue_pop_main(TaskQueue *queue, int flag);
+Task queue_acquire_or_modify_task(TaskQueue *queue, Task taskin, int flag, int getflag);
 #if defined(__cplusplus)
 }
 #endif
