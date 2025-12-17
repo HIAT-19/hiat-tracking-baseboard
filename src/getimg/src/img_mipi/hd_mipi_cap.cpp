@@ -38,20 +38,7 @@ enum { HD_VIDEO_BUFFER_CNT = 30 };
  */
 typedef void *plane_addr; ///< 每一个plane起始地址
 
-/**
- * @struct HDMipiDevState
- * @brief MIPI视频设备状态结构体
- *
- * 用于描述一个MIPI摄像头设备的所有运行时状态。
- */
-typedef struct HDMipiDevState {
-	int fd;                              ///< 设备文件描述符
-	bool is_error;                        ///< 设备是否错误，如果错误，则接口只会传出黑色图像
-	HDDeviceParam param;				 ///< 设备参数
-	struct HDBufferInfo *buffers_info;   ///< 申请的所有buffer信息
-	struct v4l2_format format;           ///< 当前设备格式
-	struct v4l2_buffer cur_buffer;       ///< 当前buffer信息
-} HDMipiDevState;
+
 
 /**
  * @brief MIPI 设备帧数据
@@ -136,8 +123,11 @@ int hd_start_mipi_video(HDMipiDevState *state)
 	struct HDBufferInfo *buffers_info = NULL;
 	size_t num_planes = 0;
 	int fd = state->fd;
-	int try_times = 0;	///< 尝试重新拉流次数
-	int ret = -1;
+	int state1 = state->state;
+	int num = state->num;
+	unsigned int width = state->width;
+	unsigned int height = state->height;
+
 
 	// Query capability
 	if (ioctl(fd, VIDIOC_QUERYCAP, &capability) < 0) {
@@ -154,9 +144,12 @@ int hd_start_mipi_video(HDMipiDevState *state)
 	}
 
 	// Set video format
-	format->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_UYVY;
-	format->fmt.pix.width = 640;
-	format->fmt.pix.height = 512;
+	if(state1 == GET_IMG_UYVY){
+		format->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_UYVY;
+	}
+	
+	format->fmt.pix.width = width;
+	format->fmt.pix.height = height;
 	if (ioctl(fd, VIDIOC_S_FMT, format) < 0) {
 		perror("Failed to set video format");
 		goto cleanup;
@@ -170,7 +163,7 @@ int hd_start_mipi_video(HDMipiDevState *state)
 	print_video_format(format);
 
 	// Request kernel buffers
-	requestbuffers.count = HD_VIDEO_BUFFER_CNT;
+	requestbuffers.count = num;
 	requestbuffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	requestbuffers.memory = V4L2_MEMORY_MMAP;//V4L2_MEMORY_DMABUF
 	if (ioctl(fd, VIDIOC_REQBUFS, &requestbuffers) < 0) {
@@ -178,30 +171,30 @@ int hd_start_mipi_video(HDMipiDevState *state)
 		goto cleanup;
 	}
 
-	state->buffers_info = (struct HDBufferInfo *)malloc(
-		requestbuffers.count * sizeof(struct HDBufferInfo));
+	state->buffers_info = static_cast<struct HDBufferInfo *>(malloc(
+		requestbuffers.count * sizeof(struct HDBufferInfo)));
 	if (!state->buffers_info) goto cleanup;
 
 	buffers_info = state->buffers_info;
 	num_planes = state->format.fmt.pix_mp.num_planes;
 	for (size_t i = 0; i < requestbuffers.count; ++i) {
-		buffers_info[i].buffer = (struct v4l2_buffer *)calloc(
-			1, sizeof(struct v4l2_buffer));
+		buffers_info[i].buffer = static_cast<struct v4l2_buffer *>(calloc(
+			1, sizeof(struct v4l2_buffer)));
 		if (!buffers_info[i].buffer) goto cleanup;
 
-		buffers_info[i].planes = (struct v4l2_plane *)calloc(
-			num_planes, sizeof(struct v4l2_plane));
+		buffers_info[i].planes = static_cast<struct v4l2_plane *>(calloc(
+			num_planes, sizeof(struct v4l2_plane)));
 		if (!buffers_info[i].planes) goto cleanup;
 		buffers_info[i].planes_addr =
-			(plane_addr *)calloc(num_planes, sizeof(plane_addr));
+			static_cast<plane_addr *>(calloc(num_planes, sizeof(plane_addr)));
 		if (!buffers_info[i].planes_addr) goto cleanup;
 
 		buffers_info[i].buffer->type =
 			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 		buffers_info[i].buffer->memory = V4L2_MEMORY_MMAP;
 		buffers_info[i].buffer->m.planes = buffers_info[i].planes;
-		buffers_info[i].buffer->length = num_planes;
-		buffers_info[i].buffer->index = i;
+		buffers_info[i].buffer->length = static_cast<uint32_t> (num_planes);
+		buffers_info[i].buffer->index = static_cast<uint32_t> (i);
 
 		if (ioctl(fd, VIDIOC_QUERYBUF, buffers_info[i].buffer) < 0) {
 			perror("Failed to query buffer");
@@ -269,13 +262,13 @@ void hd_get_mipi_video_frame(HDMipiDevState *state, HDImage *hd_image)
 		else if (state->param.stride == 0 && state->param.width == 2048) {
 			state->param.stride = 2048;
 		}
-		hd_image->hd_buf = (uint8_t *)calloc(1, state->param.stride * state->param.height);
-		hd_image->data = (uint8_t *)hd_image->hd_buf;	
+		hd_image->hd_buf = static_cast<uint8_t *>(calloc(1, state->param.stride * state->param.height));
+		hd_image->data = static_cast<uint8_t *>(hd_image->hd_buf);	
 		hd_image->param = &state->param;
 		return;
 	}
 
-	mipi_buf = (HDMipiBuffer *)calloc(1, sizeof(HDMipiBuffer));
+	mipi_buf = static_cast<HDMipiBuffer *>(calloc(1, sizeof(HDMipiBuffer)));
 	if (!mipi_buf) return;
 
 	uint32_t last_idx = UINT32_MAX;
@@ -323,7 +316,7 @@ void hd_get_mipi_video_frame(HDMipiDevState *state, HDImage *hd_image)
 	hd_image->param = &state->param;
 	param = hd_image->param;
 	hd_image->hd_buf = mipi_buf;
-	hd_image->data = (uint8_t *)(state->buffers_info[last_idx].planes_addr[0]);
+	hd_image->data = static_cast<uint8_t *>(state->buffers_info[last_idx].planes_addr[0]);
 	param->width = state->format.fmt.pix.width;
 	param->height = state->format.fmt.pix.height;
 	param->stride = state->format.fmt.pix_mp.plane_fmt[0].bytesperline;
@@ -495,7 +488,7 @@ int hd_clear_mipi_dev(HDMipiDevState *state)
 struct HDMipiDevState *hd_state_init()
 {
 	struct HDMipiDevState *state = NULL;
-	state = (struct HDMipiDevState *)calloc(1, sizeof(*state));
+	state = static_cast<struct HDMipiDevState *>(calloc(1, sizeof(*state)));
 	if (NULL == state) {
 		perror("Cannot allocate memory for device state");
 		return NULL;

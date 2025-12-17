@@ -265,7 +265,7 @@ void *sx_av_buffer_get_opaque(const AVBufferRef *buf)
 
 int sx_av_buffer_get_ref_count(const AVBufferRef *buf)
 {
-    return atomic_load(&buf->buffer->refcount);
+    return (int)atomic_load(&buf->buffer->refcount);
 }
 
 int sx_av_buffer_make_writable(AVBufferRef **pbuf)
